@@ -1,3 +1,4 @@
+using Cinemachine;
 using CleverCrow.Fluid.FSMs;
 using Player.FSM;
 using UnityEngine;
@@ -18,9 +19,18 @@ namespace Player
         private float _jumpTime;
         private PlayerSettings _playerSettingsInstance;
         private IFsm _playerFsm;
+        public CinemachineFreeLook cinemachineFreeLook;
+        private float _fieldOfView;
 
         public void OnMove(InputValue value) => _movementInputVector = value.Get<Vector2>();
         public void OnJump(InputValue value) => _jumpingInput = value.isPressed;
+        public void OnZoom(InputValue value)
+        {
+            if (value.isPressed)
+                cinemachineFreeLook.m_Lens.FieldOfView = 30f;
+            else
+                cinemachineFreeLook.m_Lens.FieldOfView = _fieldOfView;
+        }
         private IFsm CreatePlayerFsm()
         {
             return new FsmBuilder()
@@ -109,6 +119,8 @@ namespace Player
             playerSettings ??= ScriptableObject.CreateInstance<PlayerSettings>();
             _playerSettingsInstance = Instantiate(playerSettings);
             _playerFsm = CreatePlayerFsm();
+            cinemachineFreeLook ??= FindObjectOfType<CinemachineFreeLook>();
+            _fieldOfView = cinemachineFreeLook.m_Lens.FieldOfView;
         }
 
         private void Update()
