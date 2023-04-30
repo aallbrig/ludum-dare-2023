@@ -1,5 +1,6 @@
 using Cinemachine;
 using CleverCrow.Fluid.FSMs;
+using Interaction;
 using Player.FSM;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -11,6 +12,7 @@ namespace Player
     {
         public PlayerSettings playerSettings;
         public Animator targetAnimator;
+        public Transform bikeTransform;
         private PlayerInput _playerInput;
         private Camera _perspectiveCamera;
         private CharacterController _characterController;
@@ -22,6 +24,11 @@ namespace Player
         public CinemachineFreeLook cinemachineFreeLook;
         private float _fieldOfView;
 
+        public void ShowBike(bool show)
+        {
+            if (bikeTransform == null) return;
+            bikeTransform.gameObject.SetActive(show);
+        }
         public void OnMove(InputValue value) => _movementInputVector = value.Get<Vector2>();
         public void OnJump(InputValue value) => _jumpingInput = value.isPressed;
         public void OnZoom(InputValue value)
@@ -30,6 +37,20 @@ namespace Player
                 cinemachineFreeLook.m_Lens.FieldOfView = 30f;
             else
                 cinemachineFreeLook.m_Lens.FieldOfView = _fieldOfView;
+        }
+        public void OnInteract(InputValue value)
+        {
+            // Debug.Log($"interact: {value.isPressed}");
+            // if interact button is pressed
+            // Cast a sphere out and if any interactable is hit then call interact on it
+
+            if (value.isPressed)
+            {
+                var colliders = Physics.OverlapSphere(transform.position, _playerSettingsInstance.interactDistance);
+                foreach (var hitCollider in colliders)
+                    if (hitCollider.TryGetComponent(out IInteractable interactable))
+                        interactable.Interact();
+            }
         }
         private IFsm CreatePlayerFsm()
         {
