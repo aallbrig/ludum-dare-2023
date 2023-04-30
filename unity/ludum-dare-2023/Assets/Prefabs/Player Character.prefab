@@ -75,6 +75,7 @@ GameObject:
   - component: {fileID: 3225708220292525972}
   - component: {fileID: 480370574370711358}
   - component: {fileID: 8603451427405530914}
+  - component: {fileID: 120219138116238298}
   m_Layer: 0
   m_Name: Player Character
   m_TagString: Untagged
@@ -236,6 +237,19 @@ MonoBehaviour:
   targetAnimator: {fileID: 8861788782235957088}
   bikeTransform: {fileID: 5049820359261894317}
   cinemachineFreeLook: {fileID: 0}
+--- !u!114 &120219138116238298
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5262185913356076730}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9bf297d477142788ecfe1625e2d942e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  complete: 0
 --- !u!1001 &7263257464325251850
 PrefabInstance:
   m_ObjectHideFlags: 0
