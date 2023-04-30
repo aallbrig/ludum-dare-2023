@@ -1,4 +1,5 @@
-using System;
+using CleverCrow.Fluid.FSMs;
+using Player.FSM;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -11,9 +12,78 @@ namespace Player
         private PlayerInput _playerInput;
         private Camera _perspectiveCamera;
         private CharacterController _characterController;
-        private Vector2 _inputVector;
+        private Vector2 _movementInputVector;
+        private bool _jumpingInput;
+        private float _jumpTime;
         private PlayerSettings _playerSettingsInstance;
+        private IFsm _playerFsm;
 
+        public void OnMove(InputValue value) => _movementInputVector = value.Get<Vector2>();
+        public void OnJump(InputValue value) => _jumpingInput = value.isPressed;
+        private IFsm CreatePlayerFsm()
+        {
+            return new FsmBuilder()
+                .Owner(gameObject)
+                .Default(PlayerStates.Idle)
+                .State(PlayerStates.Idle, stateBuilder =>
+                {
+                    stateBuilder
+                        .SetTransition(PlayerStates.Running.ToString(), PlayerStates.Running)
+                        .SetTransition(PlayerStates.Jumping.ToString(), PlayerStates.Jumping)
+                        .Update(action =>
+                        {
+                            if (_movementInputVector != Vector2.zero) action.Transition(PlayerStates.Running.ToString());
+                            if (_jumpingInput) action.Transition(PlayerStates.Jumping.ToString());
+                        });
+                })
+                .State(PlayerStates.Running, stateBuilder =>
+                {
+                    stateBuilder
+                        .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
+                        .SetTransition(PlayerStates.Jumping.ToString(), PlayerStates.Jumping)
+                        .Update(action =>
+                        {
+                            if (_movementInputVector == Vector2.zero) action.Transition(PlayerStates.Idle.ToString());
+                            if (_jumpingInput) action.Transition(PlayerStates.Jumping.ToString());
+                            var gravity = Physics.gravity * Time.deltaTime;
+                            if (_movementInputVector != Vector2.zero)
+                            {
+                                var convertedInputVector = new Vector3(_movementInputVector.x, 0, _movementInputVector.y);
+                                var movementByPerspective = _perspectiveCamera.transform.TransformDirection(convertedInputVector);
+                                // Don't allow player to move in y direction
+                                movementByPerspective.y = 0;
+                                _characterController.Move(
+                                    _playerSettingsInstance.movementSpeed
+                                    * Time.deltaTime
+                                    * movementByPerspective
+                                );
+                                transform.rotation = Quaternion.LookRotation(movementByPerspective);
+                            }
+                            _characterController.Move(gravity);
+                        });
+                })
+                .State(PlayerStates.Jumping, stateBuilder =>
+                {
+                    stateBuilder
+                        .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
+                        .Enter(action =>
+                        {
+                            _jumpTime = 0;
+                        })
+                        .Update(action =>
+                        {
+                            var gravity = Physics.gravity * Time.deltaTime;
+                            _jumpTime += Time.deltaTime;
+                            var jumpCurveEval = _playerSettingsInstance.jumpCurve.Evaluate(_jumpTime);
+                            var moveDirection = new Vector3(_movementInputVector.x, 0, _movementInputVector.y);
+                            moveDirection.y = _playerSettingsInstance.jumpForce * jumpCurveEval;
+                            _characterController.Move(moveDirection * Time.deltaTime);
+                            _characterController.Move(gravity);
+                            if (_characterController.isGrounded) action.Transition(PlayerStates.Idle.ToString());
+                        });
+                })
+                .Build();
+        }
         private void Awake()
         {
             _playerInput = GetComponent<PlayerInput>();
@@ -22,30 +92,12 @@ namespace Player
             _characterController = GetComponent<CharacterController>();
             playerSettings ??= ScriptableObject.CreateInstance<PlayerSettings>();
             _playerSettingsInstance = Instantiate(playerSettings);
-        }
-
-        public void OnMove(InputValue value)
-        {
-            _inputVector = value.Get<Vector2>();
+            _playerFsm = CreatePlayerFsm();
         }
 
         private void Update()
         {
-            if (_inputVector != Vector2.zero)
-            {
-                var convertedInputVector = new Vector3(_inputVector.x, 0, _inputVector.y);
-                var movementByPerspective = _perspectiveCamera.transform.TransformDirection(convertedInputVector);
-                // Don't allow player to move in y direction
-                movementByPerspective.y = 0;
-                _characterController.Move(
-                    _playerSettingsInstance.movementSpeed
-                    * Time.deltaTime
-                    * movementByPerspective
-                );
-                transform.rotation = Quaternion.LookRotation(movementByPerspective);
-            }
-            else
-                _characterController.Move(Physics.gravity * Time.deltaTime);
+            _playerFsm.Tick();
         }
     }
 }

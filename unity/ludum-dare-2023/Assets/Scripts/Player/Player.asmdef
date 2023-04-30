@@ -2,7 +2,8 @@
     "name": "Player",
     "rootNamespace": "",
     "references": [
-        "GUID:75469ad4d38634e559750d17036d5f7c"
+        "GUID:75469ad4d38634e559750d17036d5f7c",
+        "GUID:9536fc91c7c04435b8771532044a635d"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
