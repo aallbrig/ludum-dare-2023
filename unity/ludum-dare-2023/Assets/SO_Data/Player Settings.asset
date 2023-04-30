@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Player Settings
   m_EditorClassIdentifier: 
   movementSpeed: 4
-  jumpForce: 10
+  jumpForce: 50
   jumpCurve:
     serializedVersion: 2
     m_Curve:

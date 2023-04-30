@@ -9,6 +9,7 @@ namespace Player
     public class PlayerController : MonoBehaviour
     {
         public PlayerSettings playerSettings;
+        public Animator targetAnimator;
         private PlayerInput _playerInput;
         private Camera _perspectiveCamera;
         private CharacterController _characterController;
@@ -28,6 +29,12 @@ namespace Player
                 .State(PlayerStates.Idle, stateBuilder =>
                 {
                     stateBuilder
+                        .Enter(_ =>
+                        {
+                            targetAnimator.SetBool("Idle", true);
+                            targetAnimator.SetBool("Running", false);
+                            targetAnimator.SetBool("Jumping", false);
+                        })
                         .SetTransition(PlayerStates.Running.ToString(), PlayerStates.Running)
                         .SetTransition(PlayerStates.Jumping.ToString(), PlayerStates.Jumping)
                         .Update(action =>
@@ -39,6 +46,12 @@ namespace Player
                 .State(PlayerStates.Running, stateBuilder =>
                 {
                     stateBuilder
+                        .Enter(_ =>
+                        {
+                            targetAnimator.SetBool("Idle", false);
+                            targetAnimator.SetBool("Running", true);
+                            targetAnimator.SetBool("Jumping", false);
+                        })
                         .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
                         .SetTransition(PlayerStates.Jumping.ToString(), PlayerStates.Jumping)
                         .Update(action =>
@@ -69,6 +82,9 @@ namespace Player
                         .Enter(action =>
                         {
                             _jumpTime = 0;
+                            targetAnimator.SetBool("Idle", false);
+                            targetAnimator.SetBool("Running", false);
+                            targetAnimator.SetBool("Jumping", true);
                         })
                         .Update(action =>
                         {
