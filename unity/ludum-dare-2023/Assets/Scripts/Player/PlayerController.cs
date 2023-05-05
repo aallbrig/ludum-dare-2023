@@ -1,56 +1,88 @@
+using System;
 using Cinemachine;
 using CleverCrow.Fluid.FSMs;
 using Interaction;
 using Player.FSM;
+using Settings;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.InputSystem;
 
 namespace Player
 {
     [RequireComponent(typeof(PlayerInput), typeof(CharacterController))]
-    public class PlayerController : MonoBehaviour
+    public class PlayerController : MonoBehaviour, IUnityEventInteractor
     {
         public PlayerSettings playerSettings;
         public Animator targetAnimator;
         public Transform bikeTransform;
+        public UnityEvent zoomInEvents;
+        public UnityEvent zoomOutEvents;
+        public UnityEvent interactEvents;
         private PlayerInput _playerInput;
         private Camera _perspectiveCamera;
         private CharacterController _characterController;
         private Vector2 _movementInputVector;
         private bool _jumpingInput;
-        private float _jumpTime;
-        private PlayerSettings _playerSettingsInstance;
         private IFsm _playerFsm;
+        private int _stateEnterFrameCount;
         public CinemachineFreeLook cinemachineFreeLook;
-        private float _fieldOfView;
+        private bool _isJumping;
+        private Vector3 _velocity;
+        private int _frameCounter = -1; // first frame should be 0, not 1
+        private Vector3 _inputDirectionFromPerspectiveCamera;
+        private PlayerStates _playerFsmAfterTickState;
+        private PlayerStates _playerFsmBeforeTickState;
+        private float _jumpTime;
 
-        public void ShowBike(bool show)
+        private void Awake()
         {
-            if (bikeTransform == null) return;
-            bikeTransform.gameObject.SetActive(show);
+            _playerInput = GetComponent<PlayerInput>();
+            _perspectiveCamera = _playerInput.camera;
+            _perspectiveCamera ??= Camera.main;
+            _characterController = GetComponent<CharacterController>();
+            playerSettings ??= ScriptableObject.CreateInstance<PlayerSettings>();
+            _playerFsm = CreatePlayerFsm();
+            cinemachineFreeLook ??= FindObjectOfType<CinemachineFreeLook>();
         }
+        private void Update()
+        {
+            _frameCounter++;
+            _inputDirectionFromPerspectiveCamera = _perspectiveCamera.transform.TransformDirection(
+                new Vector3(_movementInputVector.x, 0, _movementInputVector.y)
+            );
+            // convert IState to PlayerStates
+            _playerFsmBeforeTickState = (PlayerStates) _playerFsm.CurrentState.Id;
+            _playerFsm.Tick();
+            _playerFsmAfterTickState = (PlayerStates) _playerFsm.CurrentState.Id;
+            if (_playerFsmBeforeTickState != _playerFsmAfterTickState) Debug.Log($"{name} | FSM state change: {_playerFsmAfterTickState}");
+            if (_velocity != Vector3.zero) _characterController.Move(_velocity * Time.deltaTime);
+        }
+        public UnityEvent InteractEvents => interactEvents;
         public void OnMove(InputValue value) => _movementInputVector = value.Get<Vector2>();
         public void OnJump(InputValue value) => _jumpingInput = value.isPressed;
         public void OnZoom(InputValue value)
         {
             if (value.isPressed)
-                cinemachineFreeLook.m_Lens.FieldOfView = 30f;
+            {
+                Debug.Log($"{name} | zoom button pressed, triggering event number: {zoomInEvents.GetPersistentEventCount()}");
+                zoomInEvents?.Invoke();
+            }
             else
-                cinemachineFreeLook.m_Lens.FieldOfView = _fieldOfView;
+                zoomOutEvents?.Invoke();
         }
         public void OnInteract(InputValue value)
         {
-            // Debug.Log($"interact: {value.isPressed}");
-            // if interact button is pressed
-            // Cast a sphere out and if any interactable is hit then call interact on it
-
             if (value.isPressed)
             {
-                var colliders = Physics.OverlapSphere(transform.position, _playerSettingsInstance.interactDistance);
-                foreach (var hitCollider in colliders)
-                    if (hitCollider.TryGetComponent(out IInteractable interactable))
-                        interactable.Interact();
+                Debug.Log($"{name} | Interact triggering event number: {interactEvents.GetPersistentEventCount()}");
+                InteractEvents?.Invoke();
             }
+        }
+        public void ShowBike(bool show)
+        {
+            if (bikeTransform == null) return;
+            bikeTransform.gameObject.SetActive(show);
         }
         private IFsm CreatePlayerFsm()
         {
@@ -62,6 +94,8 @@ namespace Player
                     stateBuilder
                         .Enter(_ =>
                         {
+                            Debug.Log($"{name} | idle state enter (frame {_frameCounter})");
+                            _velocity = Vector3.zero;
                             targetAnimator.SetBool("Idle", true);
                             targetAnimator.SetBool("Running", false);
                             targetAnimator.SetBool("Jumping", false);
@@ -82,71 +116,95 @@ namespace Player
                             targetAnimator.SetBool("Idle", false);
                             targetAnimator.SetBool("Running", true);
                             targetAnimator.SetBool("Jumping", false);
+                            
+                            // Don't allow player to move in y direction
+                            if (_movementInputVector == Vector2.zero) return;
+                            var moveDirection = new Vector3(_inputDirectionFromPerspectiveCamera.x, 0, _inputDirectionFromPerspectiveCamera.z);
+                            _velocity = moveDirection * playerSettings.movementSpeed;
+                            if (moveDirection != Vector3.zero) transform.rotation = Quaternion.LookRotation(moveDirection);
                         })
                         .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
                         .SetTransition(PlayerStates.Jumping.ToString(), PlayerStates.Jumping)
+                        .SetTransition(PlayerStates.Falling.ToString(), PlayerStates.Falling)
                         .Update(action =>
                         {
+                            // if (!_characterController.isGrounded) action.Transition(PlayerStates.Falling.ToString());
                             if (_movementInputVector == Vector2.zero) action.Transition(PlayerStates.Idle.ToString());
                             if (_jumpingInput) action.Transition(PlayerStates.Jumping.ToString());
-                            var gravity = Physics.gravity * Time.deltaTime;
-                            if (_movementInputVector != Vector2.zero)
-                            {
-                                var convertedInputVector = new Vector3(_movementInputVector.x, 0, _movementInputVector.y);
-                                var movementByPerspective = _perspectiveCamera.transform.TransformDirection(convertedInputVector);
-                                // Don't allow player to move in y direction
-                                movementByPerspective.y = 0;
-                                _characterController.Move(
-                                    _playerSettingsInstance.movementSpeed
-                                    * Time.deltaTime
-                                    * movementByPerspective
-                                );
-                                transform.rotation = Quaternion.LookRotation(movementByPerspective);
-                            }
-                            _characterController.Move(gravity);
+
+                            // Don't allow player to move in y direction
+                            var moveDirection = new Vector3(_inputDirectionFromPerspectiveCamera.x, 0, _inputDirectionFromPerspectiveCamera.z);
+                            _velocity = moveDirection * playerSettings.movementSpeed;
+                            if (moveDirection != Vector3.zero) transform.rotation = Quaternion.LookRotation(moveDirection);
                         });
                 })
                 .State(PlayerStates.Jumping, stateBuilder =>
                 {
                     stateBuilder
                         .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
+                        .SetTransition(PlayerStates.Falling.ToString(), PlayerStates.Falling)
                         .Enter(action =>
                         {
+                            _stateEnterFrameCount = _frameCounter;
                             _jumpTime = 0;
+                            Debug.Log($"Jumping state enter (frame {_stateEnterFrameCount})");
+                            var sampledJumpForce = playerSettings.jumpCurve.Evaluate(_jumpTime);
+                            Debug.Log($"sampled jump force {sampledJumpForce}");
+                            Debug.Log($"sampled jump force {sampledJumpForce} results in {playerSettings.jumpForce * sampledJumpForce}");
+                            var moveDirection = new Vector3(_inputDirectionFromPerspectiveCamera.x, 0, _inputDirectionFromPerspectiveCamera.z);
+                            _velocity = moveDirection * playerSettings.movementSpeed;
+                            _velocity.y = playerSettings.jumpForce * sampledJumpForce;
+                            if (moveDirection != Vector3.zero) transform.rotation = Quaternion.LookRotation(moveDirection);
                             targetAnimator.SetBool("Idle", false);
                             targetAnimator.SetBool("Running", false);
                             targetAnimator.SetBool("Jumping", true);
+                            // todo: falling animation state
                         })
                         .Update(action =>
                         {
-                            var gravity = Physics.gravity * Time.deltaTime;
                             _jumpTime += Time.deltaTime;
-                            var jumpCurveEval = _playerSettingsInstance.jumpCurve.Evaluate(_jumpTime);
-                            var moveDirection = new Vector3(_movementInputVector.x, 0, _movementInputVector.y);
-                            moveDirection.y = _playerSettingsInstance.jumpForce * jumpCurveEval;
-                            _characterController.Move(moveDirection * Time.deltaTime);
-                            _characterController.Move(gravity);
-                            if (_characterController.isGrounded) action.Transition(PlayerStates.Idle.ToString());
+                            var curveSample = playerSettings.jumpCurve.Evaluate(_jumpTime / playerSettings.jumpTime);
+                            var moveDirection = new Vector3(_inputDirectionFromPerspectiveCamera.x, 0, _inputDirectionFromPerspectiveCamera.z);
+                            _velocity = moveDirection * playerSettings.movementSpeed;
+                            _velocity.y = playerSettings.jumpForce * curveSample;
+                            if (moveDirection != Vector3.zero) transform.rotation = Quaternion.LookRotation(moveDirection);
+
+                            if (curveSample >= 0.9999f)
+                            {
+                                action.Transition(PlayerStates.Falling.ToString());
+                            }
+                        });
+                })
+                .State(PlayerStates.Falling, stateBuilder =>
+                {
+                    stateBuilder
+                        .Enter(_ =>
+                        {
+                            _jumpTime = 0;
+                            targetAnimator.SetBool("Idle", true);
+                            targetAnimator.SetBool("Running", false);
+                            targetAnimator.SetBool("Jumping", false);
+                        })
+                        .SetTransition(PlayerStates.Idle.ToString(), PlayerStates.Idle)
+                        .SetTransition(PlayerStates.Running.ToString(), PlayerStates.Running)
+                        .Update(action =>
+                        {
+                            _jumpTime += Time.deltaTime;
+                            if (_characterController.isGrounded)
+                            {
+                                _velocity.y = 0;
+                                if (_movementInputVector != Vector2.zero) action.Transition(PlayerStates.Running.ToString());
+                                else action.Transition(PlayerStates.Idle.ToString());
+                                return;
+                            }
+                            var curveSample = playerSettings.jumpCurve.Evaluate(_jumpTime / playerSettings.jumpTime);
+                            var moveDirection = new Vector3(_inputDirectionFromPerspectiveCamera.x, 0, _inputDirectionFromPerspectiveCamera.z);
+                            _velocity = moveDirection * playerSettings.movementSpeed;
+                            _velocity.y = Physics.gravity.y * curveSample; // apply gravity
+                            if (moveDirection != Vector3.zero) transform.rotation = Quaternion.LookRotation(moveDirection);
                         });
                 })
                 .Build();
-        }
-        private void Awake()
-        {
-            _playerInput = GetComponent<PlayerInput>();
-            _perspectiveCamera = _playerInput.camera;
-            _perspectiveCamera ??= Camera.main;
-            _characterController = GetComponent<CharacterController>();
-            playerSettings ??= ScriptableObject.CreateInstance<PlayerSettings>();
-            _playerSettingsInstance = Instantiate(playerSettings);
-            _playerFsm = CreatePlayerFsm();
-            cinemachineFreeLook ??= FindObjectOfType<CinemachineFreeLook>();
-            _fieldOfView = cinemachineFreeLook.m_Lens.FieldOfView;
-        }
-
-        private void Update()
-        {
-            _playerFsm.Tick();
         }
     }
 }

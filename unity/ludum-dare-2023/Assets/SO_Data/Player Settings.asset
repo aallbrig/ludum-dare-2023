@@ -12,8 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5a417ab3699143658357a78a6c0a3764, type: 3}
   m_Name: Player Settings
   m_EditorClassIdentifier: 
-  movementSpeed: 4
-  jumpForce: 50
+  movementSpeed: 8
+  jumpForce: 12
+  jumpTime: 0.33
   jumpCurve:
     serializedVersion: 2
     m_Curve:
@@ -38,3 +39,4 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  interactDistance: 5

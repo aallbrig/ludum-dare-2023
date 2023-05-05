@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -11,13 +12,13 @@ namespace Interaction
         {
             foreach (var colliderHit in Physics.OverlapSphere(transform.position, 3f))
             {
-                if (colliderHit.TryGetComponent(out Quest.Quest quest)) {
+                if (colliderHit.TryGetComponent(out Quest.Quest quest))
+                {
                     if (quest.complete) {
-                        Debug.Log("quest complete!");
+                        Debug.Log($"{name} | quest is complete");
                         onQuestComplete?.Invoke();
-                    }
-                    else {
-                        Debug.Log("quest not complete");
+                    } else {
+                        Debug.Log($"{name} | quest is not complete");
                         onQuestStart?.Invoke();
                     }
                 }
